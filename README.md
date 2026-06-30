@@ -91,7 +91,6 @@
 
 
 ---
-## Star History
 
 <a href="https://www.star-history.com/?repos=IR-NETLIFY%2Fzeus&type=timeline&legend=top-left">
  <picture>
