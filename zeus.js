@@ -2739,7 +2739,42 @@ const HTML_TEMPLATES = {
             </div>
         </div>
     </div>
+<div id="update-modal" class="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
+        <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-500 mb-4 shadow-inner">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            </div>
+            <h3 class="font-black text-xl text-gray-900 dark:text-white mb-2">بروزرسانی پنل</h3>
+            <p id="update-modal-text" class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium">
+                نسخه جدید در دسترس است. اگر آپدیت خودکار جواب نداد، حتماً از طریق لینک زیر آپدیت دستی را انجام دهید.
+            </p>
 
+            <div class="space-y-3">
+                <button onclick="applyUpdate()" class="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-sm transition duration-300 shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    آپدیت خودکار (توصیه شده)
+                </button>
+                
+                <div class="relative py-2">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-200 dark:border-zinc-800"></div>
+                    </div>
+                    <div class="relative flex justify-center text-xs">
+                        <span class="bg-white dark:bg-amoled-card px-2 text-gray-400">یا</span>
+                    </div>
+                </div>
+
+                <a href="https://zeus-panel.ir-netlify.workers.dev/" target="_blank" class="w-full py-3.5 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-800 dark:text-zinc-200 font-bold rounded-xl text-sm transition duration-300 flex items-center justify-center gap-2 border border-gray-200 dark:border-zinc-700">
+                    <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    آپدیت دستی (رفتن به سایت)
+                </a>
+            </div>
+
+            <button onclick="toggleUpdateModal(false)" class="mt-5 w-full py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium rounded-lg text-sm transition">
+                انصراف
+            </button>
+        </div>
+    </div>
     <script>
         window.globalFragLen = "20-30";
         window.globalFragInt = "1-2";
@@ -2832,7 +2867,24 @@ const HTML_TEMPLATES = {
                 if (fpSelect) fpSelect.value = 'ios';
             }
         }
-
+		function toggleUpdateModal(show, version = '') {
+            const modal = document.getElementById('update-modal');
+            const card = modal.querySelector('div');
+            if (show) {
+                if (version) {
+                    document.getElementById('update-modal-text').innerHTML = 'نسخه جدید (<b>v' + version + '</b>) در دسترس است.<br>اگر آپدیت خودکار جواب نداد، از روش دستی استفاده کنید.';
+                }
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                modal.classList.add('opacity-100', 'pointer-events-auto');
+                card.classList.remove('opacity-0', 'scale-95');
+                card.classList.add('opacity-100', 'scale-100');
+            } else {
+                modal.classList.remove('opacity-100', 'pointer-events-auto');
+                modal.classList.add('opacity-0', 'pointer-events-none');
+                card.classList.remove('opacity-100', 'scale-100');
+                card.classList.add('opacity-0', 'scale-95');
+            }
+        }
         function openCreateModal() {
             isEditMode = false;
             editingUsername = '';
@@ -3895,7 +3947,7 @@ function editUser(encodedUsername) {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.4.6';
+const CURRENT_VERSION = '1.4.7';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 
 		async function checkForUpdates(isManual = false) {
@@ -3915,10 +3967,10 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
                     document.getElementById('update-toggle').className = "p-2 rounded-lg bg-red-100 dark:bg-red-900/60 border border-red-500 hover:bg-red-200 dark:hover:bg-red-900/80 transition text-red-700 dark:text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-pulse relative";
                     const badge = document.getElementById('update-badge');
                     if (badge) badge.remove();
+                    
                     if (isManual) {
-                        if (confirm('نسخه جدید (v' + latestVersion + ') در دسترس است! آیا می خواهید پنل را آپدیت کنید؟')) {
-                            applyUpdate();
-                        }
+                        // باز کردن پنجره اختصاصی آپدیت به جای alert معمولی
+                        toggleUpdateModal(true, latestVersion);
                     }
                 } else {
                     if (isManual) {
@@ -3934,9 +3986,12 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
         }
 
         async function applyUpdate() {
+            // بستن پنجره آپدیت قبل از شروع عملیات
+            toggleUpdateModal(false);
+            
             const btn = document.getElementById('update-toggle');
             btn.disabled = true;
-            alert('در حال دریافت و اعمال آپدیت... لطفا تایید کنید.');
+            alert('در حال دریافت و اعمال آپدیت... لطفاً چند ثانیه صبر کنید.');
             
             try {
                 const res = await fetch('/api/update-panel', { method: 'POST' });
@@ -3948,11 +4003,11 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
                         window.location.reload();
                     }, 5000);
                 } else {
-                    alert('خطا در بروزرسانی لطفا با لینک زیر آپدیت کنید https://zeus-panel.ir-netlify.workers.dev/' + (data.error || 'نامشخص'));
+                    alert('خطا در بروزرسانی. لطفاً با استفاده از دکمه "آپدیت دستی" اقدام کنید.');
                     btn.disabled = false;
                 }
             } catch (err) {
-                alert('خطا در بروزرسانی لطفا با لینک زیر آپدیت کنید https://zeus-panel.ir-netlify.workers.dev/');
+                alert('خطا در ارتباط با سرور. لطفاً از گزینه آپدیت دستی استفاده کنید.');
                 btn.disabled = false;
             }
         }
@@ -4082,6 +4137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setInterval(() => loadUsers(true), 2000);
             setTimeout(() => checkForUpdates(false), 2000);
         });
+
     </script>
 </body>
 </html>`,
