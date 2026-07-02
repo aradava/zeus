@@ -495,7 +495,7 @@ const Router = {
 						}
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} else {
-						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit } = body;
+						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads } = body;
 						if (new_username && new_username !== username) {
 							const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(new_username).first();
 							if (existing) {
@@ -518,8 +518,8 @@ const Router = {
 								GLOBAL_LAST_ACTIVE_WRITE.delete(username);
 							}
 						}
-						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ? WHERE username = ?")
-							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, username)
+						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ?, block_porn = ?, block_ads = ? WHERE username = ?")
+							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, block_porn ? 1 : 0, block_ads ? 1 : 0, username)
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					}
@@ -664,7 +664,13 @@ const DbService = {
 		try {
 			await db.prepare("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)").run();
 		} catch (e) {}
-		schemaEnsured = true;
+		try {
+			await db.prepare("ALTER TABLE users ADD COLUMN block_porn INTEGER DEFAULT 0").run();
+		} catch (e) {}
+		try {
+			await db.prepare("ALTER TABLE users ADD COLUMN block_ads INTEGER DEFAULT 0").run();
+		} catch (e) {}
+			schemaEnsured = true;
 	},
 	async getPanelPassword(db) {
 		if (cachedPanelPassword !== null) return cachedPanelPassword;
@@ -814,6 +820,8 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 	let tickCount = 0;
 	let validUUID = null;
 	let userIpLimit = null;
+	let targetDns = "8.8.4.4";
+	let targetDoh = "https://cloudflare-dns.com/dns-query";
 	function addBytes(bytes) {
 		if (bytes <= 0) return;
 		if (!username) {
@@ -1079,7 +1087,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 		const bytes = chunk.byteLength || 0;
 		await addBytes(bytes);
 		if (isDnsQuery) {
-			await forwardVlessUDP(chunk, serverSock, null, addBytes);
+			await forwardVlessUDP(chunk, serverSock, null, addBytes, targetDns);
 			return;
 		}
 		if (await writeToRemote(chunk)) return;
@@ -1124,6 +1132,16 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 				}
 			}
 			userIpLimit = user.ip_limit;
+			if (user.block_porn === 1 && user.block_ads === 1) {
+   			 targetDns = "94.140.14.15";
+   			 targetDoh = "https://family.adguard-dns.com/dns-query";
+			} else if (user.block_porn === 1) {
+   			 targetDns = "1.1.1.3";
+   			 targetDoh = "https://family.cloudflare-dns.com/dns-query";
+			} else if (user.block_ads === 1) {
+  			  targetDns = "94.140.14.14";
+   			 targetDoh = "https://dns.adguard-dns.com/dns-query";
+			}
 			if (clientIP && clientIP !== "unknown") {
 				console.log(`[VLESS Handshake] User: ${user.username}, clientIP: ${clientIP}, active_ips in DB: ${user.active_ips}`);
 				let activeIps = {};
@@ -1208,7 +1226,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 				if (cmd === 2) {
 					if (port === 53) {
 						isDnsQuery = true;
-						await forwardVlessUDP(rawData, serverSock, respHeader, addBytes);
+						await forwardVlessUDP(rawData, serverSock, respHeader, addBytes, targetDns);
 					} else {
 						serverSock.close();
 					}
@@ -1222,10 +1240,10 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					const task = (async () => {
 						let s = null;
 						try {
-							s = await connectDirect(addr, port, dataPayload);
+							s = await connectDirect(addr, port, dataPayload, targetDoh);
 						} catch (err) {
 							if (useFallback && proxyIP) {
-								s = await connectDirect(proxyIP, port, dataPayload);
+								s = await connectDirect(proxyIP, port, dataPayload, targetDoh);
 							} else {
 								throw err;
 							}
@@ -1377,8 +1395,8 @@ function closeSocketQuietly(socket) {
 		}
 	} catch (e) {}
 }
-async function dohQuery(domain, recordType) {
-	const cacheKey = `${domain}:${recordType}`;
+async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
+    const cacheKey = `${domain}:${recordType}:${targetDoh}`;
 	if (DNS_CACHE.has(cacheKey)) {
 		const cached = DNS_CACHE.get(cacheKey);
 		if (Date.now() < cached.expires) return cached.data;
@@ -1406,7 +1424,7 @@ async function dohQuery(domain, recordType) {
 		query.set(qname, 12);
 		qview.setUint16(12 + qname.length, qtype);
 		qview.setUint16(12 + qname.length + 2, 1);
-		const response = await fetch(DOH_RESOLVER, {
+		const response = await fetch(targetDoh, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/dns-message",
@@ -1820,9 +1838,9 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 	}
 	if (!hasData && retryFunc) await retryFunc();
 }
-async function buildRaceCandidates(address, port) {
-	if (!PRELOAD_RACE_DIAL || isIPHostname(address)) return null;
-	const [aRecords, aaaaRecords] = await Promise.all([dohQuery(address, "A"), dohQuery(address, "AAAA")]);
+async function buildRaceCandidates(address, port, targetDoh) {
+    if (!PRELOAD_RACE_DIAL || isIPHostname(address)) return null;
+    const [aRecords, aaaaRecords] = await Promise.all([dohQuery(address, "A", targetDoh), dohQuery(address, "AAAA", targetDoh)]);
 	const ipv4List = [
 		...new Set(
 			aRecords.flatMap((r) => {
@@ -1842,8 +1860,8 @@ async function buildRaceCandidates(address, port) {
 	if (ipList.length === 0) return null;
 	return ipList.map((hostname, attempt) => ({ hostname, port, attempt, resolvedFrom: address }));
 }
-async function connectDirect(address, port, initialData = null) {
-	const raceCandidates = await buildRaceCandidates(address, port);
+async function connectDirect(address, port, initialData = null, targetDoh = "https://cloudflare-dns.com/dns-query") {
+    const raceCandidates = await buildRaceCandidates(address, port, targetDoh);
 	const candidates = raceCandidates || Array.from({ length: TCP_CONCURRENCY }, () => ({ hostname: address, port }));
 	const openConnection = async (host, prt) => {
 		const socket = connect({ hostname: host, port: prt });
@@ -1885,10 +1903,10 @@ async function connectDirect(address, port, initialData = null) {
 		}
 	}
 }
-async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes) {
-	const requestData = convertToUint8Array(udpChunk);
-	try {
-		const tcpSocket = connect({ hostname: "8.8.4.4", port: 53 });
+async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes, dnsServer = "8.8.4.4") {
+    const requestData = convertToUint8Array(udpChunk);
+    try {
+        const tcpSocket = connect({ hostname: dnsServer, port: 53 });
 		let vlessHeader = respHeader;
 		const writer = tcpSocket.writable.getWriter();
 		await writer.write(requestData);
@@ -2632,6 +2650,18 @@ login: `<!DOCTYPE html>
                             </div>
                         </div>
                     </div>
+						<div class="flex flex-row flex-wrap items-center justify-center gap-6 pt-4 border-t border-gray-100 dark:border-zinc-900 mt-4">
+    						<label class="relative inline-flex items-center cursor-pointer select-none">
+        						<input type="checkbox" id="input-block-porn" class="sr-only peer">
+        						<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
+        						<span class="mr-3 text-sm font-bold text-gray-700 dark:text-zinc-300">&#x645;&#x633;&#x62F;&#x648;&#x62F; &#x633;&#x627;&#x632;&#x6CC; &#x67E;&#x648;&#x631;&#x646;&#x648;&#x6AF;&#x631;&#x627;&#x641;&#x6CC;</span>
+    						</label>
+    						<label class="relative inline-flex items-center cursor-pointer select-none">
+        						<input type="checkbox" id="input-block-ads" class="sr-only peer">
+        						<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
+        						<span class="mr-3 text-sm font-bold text-gray-700 dark:text-zinc-300">&#x645;&#x633;&#x62F;&#x648;&#x62F; &#x633;&#x627;&#x632;&#x6CC; &#x62A;&#x628;&#x644;&#x6CC;&#x63A;&#x627;&#x62A;</span>
+    						</label>
+						</div>
                 </div>
                 <div class="pt-4 flex gap-3">
                     <button type="button" onclick="toggleModal(false)" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 font-bold rounded-xl text-sm transition duration-200">انصراف</button>
@@ -3341,14 +3371,16 @@ login: `<!DOCTYPE html>
                 document.getElementById('submit-btn').innerText = 'ایجاد کاربر';
                 document.getElementById('input-name').disabled = false;
                 document.getElementById('create-user-form').reset();
-                // بازگردانی پورت‌های 443 و 80 به حالت پیش‌فرض
                 const cb443 = document.querySelector('input[name="ports"][value="443"]');
                 if (cb443) cb443.checked = true;
                 const cb80 = document.querySelector('input[name="ports"][value="80"]');
                 if (cb80) cb80.checked = true;
-                // بازگردانی اثر انگشت به iOS
                 const fpSelect = document.getElementById('fingerprint-select');
                 if (fpSelect) fpSelect.value = 'ios';
+                const bpCheck = document.getElementById('input-block-porn');
+                if (bpCheck) bpCheck.checked = false;
+                const baCheck = document.getElementById('input-block-ads');
+                if (baCheck) baCheck.checked = false;
             }
         }
 		function toggleUpdateModal(show, version = '') {
@@ -3840,9 +3872,11 @@ login: `<!DOCTYPE html>
             const limit = document.getElementById('input-limit').value || null;
             const expiry = document.getElementById('input-expiry').value || null;
             const reqLimit = document.getElementById('input-req-limit').value || null;
-            const ipLimit = document.getElementById('input-ip-limit').value || null;
-            const checkedPorts = Array.from(document.querySelectorAll('input[name="ports"]:checked')).map(cb => cb.value);
-            if (checkedPorts.length === 0) {
+			const ipLimit = document.getElementById('input-ip-limit').value || null;
+			const checkedPorts = Array.from(document.querySelectorAll('input[name="ports"]:checked')).map(cb => cb.value);
+			const block_porn = document.getElementById('input-block-porn').checked;
+			const block_ads = document.getElementById('input-block-ads').checked;
+			if (checkedPorts.length === 0) {
                 alert('⚠️ لطفا حداقل یک پورت را برای اتصال انتخاب کنید!');
                 submitButton.disabled = false;
                 submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر';
@@ -3858,7 +3892,7 @@ login: `<!DOCTYPE html>
                 const response = await fetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ username, limit_gb: limit, expiry_days: expiry, limit_req: reqLimit, tls, port, ips, fingerprint, ip_limit: ipLimit })
+					body: JSON.stringify({ username, limit_gb: limit, expiry_days: expiry, limit_req: reqLimit, tls, port, ips, fingerprint, ip_limit: ipLimit, block_porn: block_porn, block_ads: block_ads })
                 });
                 if (response.ok) {
                     toggleModal(false);
@@ -4001,6 +4035,8 @@ function closeFreePanelWarning() {
 function editUser(encodedUsername) {
     const username = decodeURIComponent(encodedUsername);
     const user = window.allUsers.find(u => u.username === username);
+	document.getElementById('input-block-porn').checked = user.block_porn === 1;
+	document.getElementById('input-block-ads').checked = user.block_ads === 1;
     if (!user) {
         alert('کاربر یافت نشد!');
         return;
@@ -4018,6 +4054,8 @@ function editUser(encodedUsername) {
     document.getElementById('input-ip-limit').value = user.ip_limit !== undefined ? (user.ip_limit || '') : (user.max_connections || '');
     document.getElementById('input-ips').value = user.ips || '';
     document.getElementById('fingerprint-select').value = user.fingerprint || 'chrome';
+	document.getElementById('input-block-porn').checked = (user.block_porn === 1);
+	document.getElementById('input-block-ads').checked = (user.block_ads === 1);
     const userPorts = String(user.port || '').split(',').map(p => p.trim());
     document.querySelectorAll('input[name="ports"]').forEach(cb => {
         cb.checked = userPorts.includes(cb.value);
@@ -4319,7 +4357,7 @@ function editUser(encodedUsername) {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.5.10';
+const CURRENT_VERSION = '1.5.11';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
