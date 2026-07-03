@@ -1015,7 +1015,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					}
 					const now = Date.now();
 					const lastRecorded = GLOBAL_LAST_ACTIVE_WRITE.get(username) || 0;
-					if (now - lastRecorded > 15000 || updatedActiveIps !== null) {
+					if (now - lastRecorded > 120000 || updatedActiveIps !== null) {
 						GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
 						if (updatedActiveIps !== null) {
 							await env.DB.prepare("UPDATE users SET last_active = ?, active_ips = ? WHERE username = ?").bind(now, updatedActiveIps, username).run();
@@ -1028,7 +1028,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 		} else {
 			clearInterval(heartbeat);
 		}
-	}, 15000);
+	}, 120000);
 	let remoteConnWrapper = { socket: null, connectingPromise: null, retryConnect: null };
 	let reqUUID = null;
 	let isHeaderParsed = false;
@@ -1938,7 +1938,7 @@ function extractUUIDFromVless(data) {
 function trackRequest(env, ctx) {
 	GLOBAL_REQ_COUNT++;
 	const now = Date.now();
-	if (now - GLOBAL_LAST_REQ_WRITE > 15000 && GLOBAL_REQ_COUNT > 0) {
+	if ((now - GLOBAL_LAST_REQ_WRITE > 900000 || GLOBAL_REQ_COUNT > 5000) && GLOBAL_REQ_COUNT > 0) {
 		GLOBAL_LAST_REQ_WRITE = now;
 		const countToSave = GLOBAL_REQ_COUNT;
 		GLOBAL_REQ_COUNT = 0;
@@ -4493,7 +4493,7 @@ async function saveSettings() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.6.1';
+const CURRENT_VERSION = '1.6.2';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
