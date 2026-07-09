@@ -613,7 +613,7 @@ const Router = {
 					const now = Date.now();
 					const enrichedUsers = (results || []).map((user) => ({
 						...user,
-						is_online: user.last_active && now - user.last_active < 25000 ? 1 : 0,
+						is_online: user.last_active && now - user.last_active < 20000 ? 1 : 0,
 						online_count: getActiveIpCount(user.active_ips),
 					}));
 					let cfReqs = { today: 0, total: 0 };
@@ -810,7 +810,7 @@ function getActiveIpCount(activeIpsJson) {
 		let count = 0;
 		for (const [ip, data] of Object.entries(activeIps)) {
 			const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-			if (now - lastSeen <= 30000) {
+			if (now - lastSeen <= 20000) {
 				count++;
 			}
 		}
@@ -895,7 +895,7 @@ async function flushExpiredTraffic(env) {
 		if (GLOBAL_WRITE_LOCK.get(uname)) continue;
 		const lastActive = GLOBAL_LAST_ACTIVE_WRITE.get(uname) || 0;
 		const activeCount = ACTIVE_CONNECTIONS_COUNT.get(uname) || 0;
-		if (activeCount <= 0 || now - lastActive > 25000) {
+		if (activeCount <= 0 || now - lastActive > 20000) {
 			GLOBAL_WRITE_LOCK.set(uname, true);
 			const deltaGb = cachedBytes / (1024 * 1024 * 1024);
 			try {
@@ -1008,6 +1008,8 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 			let cachedReqs = USER_REQ_CACHE.get(uname) || 0;
 			if ((cachedBytes > 0 || cachedReqs > 0) && !GLOBAL_WRITE_LOCK.get(uname)) {
 				GLOBAL_WRITE_LOCK.set(uname, true);
+				GLOBAL_TRAFFIC_CACHE.set(uname, 0);
+				USER_REQ_CACHE.set(uname, 0);
 				const deltaGb = cachedBytes / (1024 * 1024 * 1024);
 				const writeTask = async () => {
 					try {
@@ -1016,8 +1018,6 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 						console.error(e.message);
 					} finally {
 						GLOBAL_WRITE_LOCK.delete(uname);
-						GLOBAL_TRAFFIC_CACHE.delete(uname);
-						USER_REQ_CACHE.delete(uname);
 						GLOBAL_LAST_ACTIVE_WRITE.delete(uname);
 					}
 				};
@@ -1027,10 +1027,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					writeTask();
 				}
 			} else {
-				GLOBAL_TRAFFIC_CACHE.delete(uname);
-				USER_REQ_CACHE.delete(uname);
 				GLOBAL_LAST_ACTIVE_WRITE.delete(uname);
-				GLOBAL_WRITE_LOCK.delete(uname);
 			}
 		} else {
 			ACTIVE_CONNECTIONS_COUNT.set(uname, activeCount);
@@ -1076,7 +1073,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 							let hasChanges = false;
 							for (const [ip, data] of Object.entries(activeIps)) {
 								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-								if (nowTime - lastSeen > 30000) {
+								if (nowTime - lastSeen > 20000) {
 									delete activeIps[ip];
 									hasChanges = true;
 								}
@@ -1115,7 +1112,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					}
 					const now = Date.now();
 					const lastRecorded = GLOBAL_LAST_ACTIVE_WRITE.get(username) || 0;
-					if (now - lastRecorded > 35000 || updatedActiveIps !== null) {
+					if (now - lastRecorded > 25000 || updatedActiveIps !== null) {
 						GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
 						if (updatedActiveIps !== null) {
 							await env.DB.prepare("UPDATE users SET last_active = ?, active_ips = ? WHERE username = ?").bind(now, updatedActiveIps, username).run();
@@ -1128,7 +1125,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 		} else {
 			clearInterval(heartbeat);
 		}
-	}, 35000);
+	}, 25000);
 	let remoteConnWrapper = { socket: null, connectingPromise: null, retryConnect: null };
 	let reqUUID = null;
 	let isHeaderParsed = false;
@@ -1251,7 +1248,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 				const now = Date.now();
 				for (const [ip, data] of Object.entries(activeIps)) {
 					const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-					if (now - lastSeen > 30000) {
+					if (now - lastSeen > 20000) {
 						delete activeIps[ip];
 					}
 				}
@@ -2935,7 +2932,7 @@ const HTML_TEMPLATES = {
                 <thead>
                     <tr class="bg-gray-100 dark:bg-zinc-900/50 border-b border-gray-200 dark:border-amoled-border text-xs text-gray-500 dark:text-gray-400 text-center">
                         <th class="p-2 w-10 text-center"><input type="checkbox" id="select-all-users" onchange="toggleSelectAllUsers(this)" class="w-5 h-5 rounded-md border-2 border-gray-300 dark:border-zinc-700 text-blue-600 bg-white dark:bg-zinc-800 checked:bg-blue-600 checked:border-blue-600 focus:ring-blue-500/50 focus:ring-offset-0 transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"></th>
-                        <th class="p-2 border-r border-gray-200 dark:border-zinc-800">نام کاربری و وضعیت</th>
+                        <th class="p-2 border-r border-gray-200 dark:border-zinc-800">وضعیت</th>
                         <th class="p-2 border-r border-gray-200 dark:border-zinc-800">عملیات</th>
                         <th class="p-2 border-r border-gray-200 dark:border-zinc-800">لینک ساب</th>
                         <th class="p-2 border-r border-gray-200 dark:border-zinc-800">پورت</th>
@@ -3013,7 +3010,7 @@ const HTML_TEMPLATES = {
                             <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                             </span>
-                            <input type="text" id="input-name" placeholder="ali" maxlength="32" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition" required>
+                            <input type="text" id="input-name" placeholder="PANEL_ZEUS" maxlength="32" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition" required>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -3060,11 +3057,11 @@ const HTML_TEMPLATES = {
         <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">Fragment</span>
             <label class="relative inline-flex items-center cursor-pointer select-none">
-                <input type="checkbox" id="input-frag-toggle" onchange="toggleFragInputs(this.checked)" class="sr-only peer">
+                <input type="checkbox" id="input-frag-toggle" onchange="toggleFragInputs(this.checked)" class="sr-only peer" checked>
                 <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-zinc-700 peer-checked:bg-green-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:-translate-x-[18px]"></div>
             </label>
         </div>
-        <div id="frag-inputs-container" class="grid grid-cols-2 gap-1.5 hidden transition-all duration-300">
+        <div id="frag-inputs-container" class="grid grid-cols-2 gap-1.5 transition-all duration-300">
             <input type="text" id="input-frag-len" placeholder="Len" value="200-3000" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
             <input type="text" id="input-frag-int" placeholder="Int" value="1-2" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
         </div>
@@ -3077,7 +3074,7 @@ const HTML_TEMPLATES = {
                 <option value="chrome">🌐 Chrome</option>
 				<option value="firefox">🦊 Firefox</option>
 				<option value="safari">🧭 Safari</option>
-				<option value="ios" selected>📱 iOS (Def)</option>
+				<option value="ios" selected>📱 iOS (پیشنهادی)</option>
 				<option value="android">🤖 Android</option>
 				<option value="edge">🌀 Edge</option>
 				<option value="360">🔒 360 Browser</option>
@@ -3165,17 +3162,20 @@ const HTML_TEMPLATES = {
                         </div>
                         
                         <div class="pt-4 border-t-2 border-gray-200 dark:border-zinc-800">
-                            <div class="flex items-center justify-between gap-2 mb-3">
-                                <div class="flex items-center gap-1.5 min-w-0">
-                                    <label class="relative inline-flex items-center cursor-pointer select-none flex-shrink-0">
-                                        <input type="checkbox" id="user-proxy-mode-toggle" onchange="toggleUserProxyMode(this.checked)" class="sr-only peer">
-                                        <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                                    </label>
-                                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-zinc-300 cursor-pointer truncate" onclick="document.getElementById('user-proxy-mode-toggle').click()">ثابت کردن کشور و آیپی</label>
-                                </div>
-                                <a href="https://github.com/IR-NETLIFY/zeus-relay" target="_blank" class="text-[11px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition font-bold shadow-sm flex-shrink-0">ساخت پروکسی شخصی</a>
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-gray-100 dark:border-zinc-800/30 pb-3">
+	                            <div class="flex items-center gap-2 min-w-0">
+	                            	<label class="relative inline-flex items-center cursor-pointer select-none flex-shrink-0">
+	                            		<input type="checkbox" id="user-proxy-mode-toggle" onchange="toggleUserProxyMode(this.checked)" class="sr-only peer">
+	                            		<div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
+	                            	</label>
+	                            	<label class="block text-xs sm:text-sm font-bold text-gray-700 dark:text-zinc-300 cursor-pointer truncate" onclick="document.getElementById('user-proxy-mode-toggle').click()">ثابت کردن کشور و آیپی</label>
+	                            </div>
+	
+	                            <div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+	                            	<button type="button" onclick="toggleDonateModal(true)" class="text-[11px] bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-2 sm:py-0.5 rounded border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition font-black shadow-sm text-center whitespace-nowrap">اهدای پروکسی شخصی ❤️</button>
+	                            	<a href="https://github.com/IR-NETLIFY/zeus-relay" target="_blank" class="text-[11px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-2 sm:py-0.5 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition font-black shadow-sm text-center whitespace-nowrap">ساخت پروکسی شخصی</a>
+	                            </div>
                             </div>
-                            
                             <div class="relative transition-opacity duration-300 opacity-50 pointer-events-none" id="user-socks5-container">
                                 <input type="text" id="user-socks5-input" placeholder="socks5:// یا http:// یا (user:pass@ip:port)" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-zinc-100 transition" disabled>
                                 <div class="w-full text-center">
@@ -3183,9 +3183,9 @@ const HTML_TEMPLATES = {
                                 </div>
                                 <div class="mt-2 flex items-center justify-between w-full gap-2">
                                     <button type="button" onclick="testUserSocksProxy()" id="test-user-proxy-btn" class="flex-1 text-center text-[11px] bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 py-1.5 rounded border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition font-bold shadow-sm">تست پروکسی</button>
-                                    <button type="button" onclick="openProxySelectorModal()" class="flex-1 text-center text-[11px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 py-1.5 rounded border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition font-bold shadow-sm">مخزن پروکسی</button>
+                                    <button type="button" onclick="openProxySelectorModal()" class="flex-1 text-center text-[11px] bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 py-1.5 rounded border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition font-bold shadow-sm">مخزن پروکسی</button>
                                 </div>
-                                <div class="mt-3 p-3 border-2 border-dashed border-orange-400 dark:border-orange-500/70 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 rounded-xl text-[11px] font-bold leading-relaxed text-center w-full">
+                                <div class="mt-3 p-3 border-2 border-dashed border-red-400 dark:border-red-500/70 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-[11px] font-bold leading-relaxed text-center w-full">
 									پروکسی‌های عمومی ناپایدارند. برای کیفیت بالاتر، از دکمه <span class="text-blue-600 dark:text-blue-400 font-black">«ساخت پروکسی شخصی»</span> استفاده کنید.
 								</div>
                             </div>
@@ -3234,28 +3234,91 @@ const HTML_TEMPLATES = {
     </div>
 </div>
 <div id="proxy-selector-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
-    <div class="w-full max-w-sm bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl overflow-hidden transition-all transform duration-300 opacity-0 scale-95 ease-out">
+    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-xl overflow-hidden transition-all transform duration-300 opacity-0 scale-95 ease-out">
         <div class="px-6 py-4 border-b border-gray-150 dark:border-amoled-border flex justify-between items-center bg-gray-50 dark:bg-zinc-900/50">
-            <h3 class="font-bold text-gray-900 dark:text-zinc-100 text-sm">مخزن پروکسی آیپی ثابت</h3>
+            <h3 class="font-bold text-gray-900 dark:text-zinc-100 text-sm">مخزن پروکسی‌های آی‌پی ثابت</h3>
             <button type="button" onclick="toggleProxySelectorModal(false)" class="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all duration-200 shadow-sm">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
-        <div class="p-6 space-y-4">
-            <div id="proxy-loading-state" class="text-center text-sm text-purple-500 font-bold hidden">
-                در حال پردازش...
-            </div>
-            <div id="proxy-selection-form" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-medium mb-1.5 text-gray-700 dark:text-zinc-300">کشور را انتخاب کنید</label>
-                    <select id="proxy-country-select" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-700 dark:text-zinc-300 cursor-pointer">
-                        <option value="">در حال دریافت کشورها...</option>
+        <div class="p-5 space-y-4">
+            
+            <div class="p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl relative">
+                <h4 class="text-[13px] font-black text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                    پروکسی‌های اختصاصی (VIP)
+                </h4>
+                <p class="text-[10px] text-emerald-600/80 dark:text-emerald-500/70 mb-3 leading-relaxed font-medium">
+                    پروکسی‌های اهدایی از طرف کاربران. کیفیت بالا و بدون نیاز به اسکن.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <select id="vip-country-select" class="flex-1 px-3 py-2 bg-white dark:bg-amoled-input border border-emerald-200 dark:border-emerald-800/50 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-700 dark:text-zinc-300 cursor-pointer">
+                        <option value="">در حال بررسی مخزن...</option>
                     </select>
+                    <button type="button" onclick="loadVipProxy()" id="vip-fetch-btn" class="sm:w-auto w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap" disabled>
+                        دریافت
+                    </button>
                 </div>
             </div>
-            <div class="pt-4 flex gap-3">
-                <button type="button" onclick="toggleProxySelectorModal(false)" class="flex-1 py-2 bg-transparent border-2 border-rose-700 text-rose-700 hover:bg-rose-900/20 hover:text-rose-800 dark:border-rose-700 dark:text-rose-500 dark:hover:bg-rose-900/40 dark:hover:text-rose-400 font-bold rounded-xl text-xs transition shadow-sm">لغو</button>
-                <button type="button" onclick="fetchAndLoadProxy()" id="proxy-fetch-btn" class="flex-1 py-2 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>دریافت پروکسی</button>
+
+            <div class="relative py-1 flex items-center justify-center">
+                <span class="absolute w-full border-t border-gray-200 dark:border-zinc-800"></span>
+                <span class="bg-white dark:bg-amoled-card px-3 text-[10px] font-bold text-gray-400 relative">یا اسکن عمومی</span>
+            </div>
+
+            <div class="p-4 bg-gray-50 dark:bg-zinc-900/40 border border-gray-200 dark:border-amoled-border rounded-2xl">
+                <h4 class="text-[13px] font-black text-gray-700 dark:text-zinc-300 mb-2 flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                    پروکسی های عمومی
+                </h4>
+                <p class="text-[10px] text-gray-500 dark:text-zinc-500 mb-3 leading-relaxed font-medium">
+                    جستجو در منابع رایگان؛ به دلیل نیاز به تست کیفیت زمان‌بر است.
+                </p>
+                
+                <div id="proxy-loading-state" class="text-center text-[11px] text-blue-500 font-bold hidden my-3 whitespace-pre-line leading-relaxed">
+                    در حال اسکن...
+                </div>
+
+                <div id="proxy-selection-form" class="flex flex-col gap-2">
+                    <select id="proxy-country-select" class="w-full px-3 py-2 bg-white dark:bg-amoled-input border border-gray-300 dark:border-zinc-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-300 cursor-pointer">
+                        <option value="">در حال آماده‌سازی...</option>
+                    </select>
+                    <button type="button" onclick="fetchAndLoadProxy()" id="proxy-fetch-btn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        شروع اسکن و یافتن پروکسی
+                    </button>
+                </div>
+            </div>
+            
+            <div class="pt-1">
+                <button type="button" onclick="toggleProxySelectorModal(false)" class="w-full py-2.5 bg-transparent border-2 border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 font-bold rounded-xl text-xs transition shadow-sm">انصراف و بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="donate-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
+    <div class="w-full max-w-sm bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl overflow-hidden transition-all transform duration-300 opacity-0 scale-95 ease-out" id="donate-modal-card">
+        <div class="px-6 py-4 border-b border-gray-150 dark:border-amoled-border flex justify-between items-center bg-gray-50 dark:bg-zinc-900/50">
+            <h3 class="font-bold text-gray-900 dark:text-zinc-100 text-sm">🎁 اهدای پروکسی</h3>
+            <button type="button" onclick="toggleDonateModal(false)" class="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all duration-200 shadow-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-[11px] text-gray-600 dark:text-zinc-400 leading-relaxed font-medium">
+                اگر سرور دارید میتونید با دکمه <span class="text-blue-600 dark:text-blue-400 font-black">«ساخت پروکسی شخصی»</span> یک پروکسی بسازید و اهدا کنید به پروژه
+            </p>
+            
+            <div>
+                <input type="text" id="donate-proxy-input" placeholder="socks5:// یا http:// یا (user:pass@ip:port)" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-mono text-left text-gray-900 dark:text-zinc-100 transition">
+            </div>
+            
+            <div class="w-full text-center">
+                <span id="donate-result" class="inline-block mt-1 text-[11px] font-bold transition-colors break-words leading-relaxed empty:hidden"></span>
+            </div>
+
+            <div class="pt-2 flex gap-3">
+                <button type="button" onclick="toggleDonateModal(false)" class="flex-1 py-2 bg-transparent border-2 border-rose-700 text-rose-700 hover:bg-rose-900/20 hover:text-rose-800 dark:border-rose-700 dark:text-rose-500 dark:hover:bg-rose-900/40 dark:hover:text-rose-400 font-bold rounded-xl text-xs transition shadow-sm">لغو</button>
+                <button type="button" id="donate-submit-btn" onclick="testAndDonateProxy()" class="flex-1 py-2 bg-transparent border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-900/20 hover:text-emerald-800 dark:border-emerald-500 dark:text-emerald-500 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-400 font-bold rounded-xl text-xs transition shadow-sm">تست و اهدا</button>
             </div>
         </div>
     </div>
@@ -4024,8 +4087,8 @@ const HTML_TEMPLATES = {
 				const fragIntInput = document.getElementById('input-frag-int');
 				if (fragIntInput) fragIntInput.value = '1-2';
                 const fragToggle = document.getElementById('input-frag-toggle');
-                if (fragToggle) fragToggle.checked = false;
-                window.toggleFragInputs(false);
+                if (fragToggle) fragToggle.checked = true;
+                window.toggleFragInputs(true);
 				const customPortInput = document.getElementById('input-custom-ports');
 				if (customPortInput) customPortInput.value = '';
             }
@@ -4062,8 +4125,8 @@ const HTML_TEMPLATES = {
             const fpSelect = document.getElementById('fingerprint-select');
             if (fpSelect) fpSelect.value = 'ios';
             const fragToggle = document.getElementById('input-frag-toggle');
-            if (fragToggle) fragToggle.checked = false;
-            window.toggleFragInputs(false);
+            if (fragToggle) fragToggle.checked = true;
+            window.toggleFragInputs(true);
 
             const userProxyToggle = document.getElementById('user-proxy-mode-toggle');
             if (userProxyToggle) userProxyToggle.checked = false;
@@ -4586,7 +4649,6 @@ const HTML_TEMPLATES = {
             const frag_len = isFragEnabled ? (document.getElementById('input-frag-len').value || "200-3000") : "";
             const frag_int = isFragEnabled ? (document.getElementById('input-frag-int').value || "1-2") : "";
             
-            // گرفتن مقادیر لوکیشن اختصاصی
             const userProxyMode = document.getElementById('user-proxy-mode-toggle') ? document.getElementById('user-proxy-mode-toggle').checked : false;
             const userProxyIata = !userProxyMode ? (document.getElementById('user-location-select') ? document.getElementById('user-location-select').value : null) : null;
             const userSocks5 = userProxyMode ? (document.getElementById('user-socks5-input') ? document.getElementById('user-socks5-input').value.trim() : null) : null;
@@ -5410,7 +5472,7 @@ window.filterLocations = function() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.7.7';
+const CURRENT_VERSION = '1.7.8';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
@@ -5649,7 +5711,11 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => checkForUpdates(false), 2000);
             setInterval(() => checkForUpdates(false), 60000);
 
+            window.addEventListener('mousedown', (e) => {
+                window._modalMouseDownTarget = e.target;
+            });
             window.addEventListener('click', (e) => {
+                if (window._modalMouseDownTarget && window._modalMouseDownTarget !== e.target) return;
                 if (e.target.id === 'user-modal') toggleModal(false);
                 if (e.target.id === 'ip-selector-modal') toggleIpSelectorModal(false);
                 if (e.target.id === 'settings-modal') toggleSettingsModal(false);
@@ -5685,50 +5751,120 @@ function toggleProxySelectorModal(show) {
     }
 }
 
-async function openProxySelectorModal() {
-    toggleProxySelectorModal(true);
-    const select = document.getElementById('proxy-country-select');
-    const fetchBtn = document.getElementById('proxy-fetch-btn');
-    
-    const countriesList = [
-  "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR",
-  "AS", "AT", "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE",
-  "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ",
-  "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD",
-  "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR",
-  "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM",
-  "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI",
-  "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF",
-  "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS",
-  "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU",
-  "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT",
-  "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN",
-  "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK",
-  "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME",
-  "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ",
-  "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA",
-  "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU",
-  "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM",
-  "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS",
-  "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI",
-  "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV",
-  "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK",
-  "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA",
-  "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI",
-  "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW"
-];
-    
-    select.innerHTML = '';
-    countriesList.forEach(country => {
-        const option = document.createElement('option');
-        option.value = country;
-        const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(country) : '🌐';
-        option.textContent = flag + ' ' + country;
-        select.appendChild(option);
-    });
-    
-    fetchBtn.disabled = false;
-}
+		async function loadVipCountries() {
+			const select = document.getElementById('vip-country-select');
+			const btn = document.getElementById('vip-fetch-btn');
+			select.innerHTML = '<option value="">در حال بررسی مخزن...</option>';
+			try {
+				const res = await fetch('https://api.github.com/repos/IR-NETLIFY/zeus/contents/proxy/proxy_vip');
+				if (!res.ok) throw new Error('API Error');
+				const data = await res.json();
+				
+				const validCountries = data
+					.filter(function(file) { return file.name.endsWith('.txt'); })
+					.map(function(file) { return file.name.replace('.txt', '').toUpperCase(); });
+				
+				if (validCountries.length === 0) throw new Error('Empty');
+				
+				select.innerHTML = '<option value="">یک کشور VIP انتخاب کنید...</option>';
+				validCountries.forEach(function(country) {
+					const option = document.createElement('option');
+					option.value = country;
+					const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(country) : '🌐';
+					option.textContent = flag + ' ' + country;
+					select.appendChild(option);
+				});
+				btn.disabled = false;
+			} catch (err) {
+				select.innerHTML = '<option value="">پروکسی اختصاصی موجود نیست</option>';
+				btn.disabled = true;
+			}
+		}
+
+		async function loadVipProxy() {
+			const select = document.getElementById('vip-country-select');
+			const country = select.value;
+			const btn = document.getElementById('vip-fetch-btn');
+			
+			if (!country) return;
+			
+			btn.disabled = true;
+			btn.innerText = '...';
+			
+			try {
+				const url = 'https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/proxy/proxy_vip/' + country + '.txt?t=' + Date.now();
+				const res = await fetch(url);
+				if (!res.ok) throw new Error('فایل یافت نشد');
+				
+				const text = await res.text();
+				const lines = text.split('\\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 5; });
+				
+				if (lines.length > 0) {
+					const randomProxy = lines[Math.floor(Math.random() * lines.length)];
+					document.getElementById('user-socks5-input').value = randomProxy;
+					const userProxyResult = document.getElementById('test-user-proxy-result');
+					if (userProxyResult) {
+					    userProxyResult.innerText = '';
+					}
+					toggleProxySelectorModal(false);
+					showToast('✅ پروکسی اختصاصی با موفقیت اعمال شد.');
+				} else {
+					alert('فایل پروکسی این کشور خالی است.');
+				}
+			} catch (e) {
+				alert('خطا در دریافت پروکسی اختصاصی.');
+			} finally {
+				btn.disabled = false;
+				btn.innerText = 'دریافت';
+			}
+		}
+
+		async function openProxySelectorModal() {
+			toggleProxySelectorModal(true);
+			const select = document.getElementById('proxy-country-select');
+			const fetchBtn = document.getElementById('proxy-fetch-btn');
+			
+			const countriesList = [
+		  "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR",
+		  "AS", "AT", "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE",
+		  "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ",
+		  "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD",
+		  "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR",
+		  "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM",
+		  "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI",
+		  "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF",
+		  "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS",
+		  "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU",
+		  "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT",
+		  "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN",
+		  "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK",
+		  "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME",
+		  "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ",
+		  "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA",
+		  "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU",
+		  "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM",
+		  "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS",
+		  "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI",
+		  "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV",
+		  "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK",
+		  "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA",
+		  "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI",
+		  "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW"
+			];
+			
+			select.innerHTML = '';
+			countriesList.forEach(function(country) {
+				const option = document.createElement('option');
+				option.value = country;
+				const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(country) : '🌐';
+				option.textContent = flag + ' ' + country;
+				select.appendChild(option);
+			});
+			
+			fetchBtn.disabled = false;
+			
+			loadVipCountries();
+		}
 
 function populateProxyCountries(countries) {
     const select = document.getElementById('proxy-country-select');
@@ -5907,9 +6043,111 @@ async function fetchAndLoadProxy() {
         fetchBtn.disabled = false;
     }
 }
+const WORKER_DONATE_URL = 'https://noisy-meadow-a466.ir-netlify.workers.dev/';
 
+		function toggleDonateModal(show) {
+			const modal = document.getElementById('donate-modal');
+			const card = document.getElementById('donate-modal-card');
+			if (show) {
+				modal.classList.remove('opacity-0', 'pointer-events-none');
+				modal.classList.add('opacity-100', 'pointer-events-auto');
+				card.classList.remove('opacity-0', 'scale-95');
+				card.classList.add('opacity-100', 'scale-100');
+			} else {
+				modal.classList.remove('opacity-100', 'pointer-events-auto');
+				modal.classList.add('opacity-0', 'pointer-events-none');
+				card.classList.remove('opacity-100', 'scale-100');
+				card.classList.add('opacity-0', 'scale-95');
+				document.getElementById('donate-proxy-input').value = '';
+				const resultSpan = document.getElementById('donate-result');
+				if (resultSpan) {
+					resultSpan.innerText = '';
+					resultSpan.className = 'inline-block mt-1 text-[11px] font-bold transition-colors break-words leading-relaxed empty:hidden';
+				}
+			}
+		}
+
+		function extractIPFromProxy(proxyStr) {
+			const configMatch = proxyStr.match(/@([^:]+):/);
+			if (configMatch && configMatch[1]) return configMatch[1];
+			const ipMatch = proxyStr.match(/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/);
+			if (ipMatch) return ipMatch[0];
+			return null;
+		}
+
+		async function testAndDonateProxy() {
+			const proxyInput = document.getElementById('donate-proxy-input').value.trim();
+			const btn = document.getElementById('donate-submit-btn');
+			const resultSpan = document.getElementById('donate-result');
+			
+			if (!proxyInput) {
+				resultSpan.innerText = 'لطفاً پروکسی را وارد کنید!';
+				resultSpan.className = 'text-[11px] font-bold text-red-500 w-full mt-1';
+				return;
+			}
+
+			btn.disabled = true;
+			btn.innerText = 'صبر کنید...';
+			resultSpan.innerText = 'در حال تست با اسکنر پنل...';
+			resultSpan.className = 'text-[11px] font-bold text-emerald-500 w-full mt-1';
+			
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+			try {
+				const testRes = await fetch('/api/test-proxy', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ proxy: proxyInput }),
+					signal: controller.signal
+				});
+				clearTimeout(timeoutId);
+				
+				const testData = await testRes.json();
+				
+				if (!testRes.ok || !testData.success) {
+					throw new Error(testData.error || 'پروکسی مسدود یا خاموش است');
+				}
+				
+				const countryCode = testData.country || 'UN';
+				resultSpan.innerText = 'پروکسی سالم است! در حال ارسال (' + countryCode + ')...';
+
+				const donateResponse = await fetch(WORKER_DONATE_URL, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						proxy: proxyInput,
+						country: countryCode
+					})
+				});
+
+				const donateData = await donateResponse.json();
+
+				if (donateData.success) {
+					resultSpan.innerText = '✅ ' + donateData.message;
+					resultSpan.className = 'text-[11px] font-bold text-green-600 w-full mt-1';
+					document.getElementById('donate-proxy-input').value = '';
+				} else {
+					resultSpan.innerText = '❌ خطا: ' + donateData.error;
+					resultSpan.className = 'text-[11px] font-bold text-red-500 w-full mt-1 break-words';
+				}
+
+			} catch (error) {
+				clearTimeout(timeoutId);
+				let errorMsg = error.message;
+				if (error.name === 'AbortError') errorMsg = 'تایم‌اوت در تست پروکسی';
+				
+				resultSpan.innerText = '❌ خطا: ' + errorMsg;
+				resultSpan.className = 'text-[11px] font-bold text-red-500 w-full mt-1 break-words';
+			} finally {
+				btn.disabled = false;
+				btn.innerText = 'تست و اهدا';
+			}
+		}
 window.addEventListener('click', (e) => {
+    if (window._modalMouseDownTarget && window._modalMouseDownTarget !== e.target) return;
     if (e.target.id === 'proxy-selector-modal') toggleProxySelectorModal(false);
+	if (e.target.id === 'donate-modal') toggleDonateModal(false);
 });
     </script>
 </body>
