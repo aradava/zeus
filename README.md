@@ -53,7 +53,7 @@
 
 <a href="https://github.com/IR-NETLIFY/zeus">
 
-<img  src="https://img.shields.io/badge/Version-1.8.5-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
+<img  src="https://img.shields.io/badge/Version-1.8.9-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
 
 </a>
 
