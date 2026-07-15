@@ -12,7 +12,19 @@ const SOURCES = [
     'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt',
     'https://raw.githubusercontent.com/rdavydov/proxy-list/main/proxies/socks5.txt',
     'https://raw.githubusercontent.com/officialputuid/Socks5-Proxy-List/master/socks5.txt',
-    'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt'
+    'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt',
+    'https://raw.githubusercontent.com/r00tee/Proxy-List/main/Socks5.txt',
+    'https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/socks5.txt',
+    'https://raw.githubusercontent.com/databay-labs/free-proxy-list/main/socks5.txt',
+    'https://raw.githubusercontent.com/proxygenerator1/ProxyGenerator/main/MostStable/socks5.txt',
+    'https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt',
+    'https://raw.githubusercontent.com/B4atman/Proxy-List/main/socks5.txt',
+    'https://raw.githubusercontent.com/MuRongPignut/free-proxy-list/main/socks5.txt',
+    'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt',
+    'https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt',
+    'https://raw.githubusercontent.com/UptimerBot/proxy-list/main/socks5.txt',
+    'https://raw.githubusercontent.com/ALIILAPRO/Proxy/main/socks5.txt',
+    'https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/socks5.txt'
 ];
 
 function fetchText(url) {
@@ -133,9 +145,9 @@ async function main() {
     const uniqueProxies = Array.from(allProxies);
     console.log(`Fetched ${uniqueProxies.length} unique SOCKS5 proxies. Testing them concurrently (limit: 150)...`);
     
-    // We'll limit checking to 2000 random proxies if the count is extremely large, to keep it within sensible resource usage.
+    // We'll limit checking to 4000 random proxies if the count is extremely large, to keep it within sensible resource usage.
     const shuffled = uniqueProxies.sort(() => 0.5 - Math.random());
-    const candidates = shuffled.slice(0, 2000);
+    const candidates = shuffled.slice(0, 4000);
     
     const tasks = candidates.map(proxy => async () => {
         const [host, portStr] = proxy.split(':');
