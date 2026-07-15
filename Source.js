@@ -2317,11 +2317,66 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData) {
 		}
 	}
 	const isHttp = normalized.toLowerCase().startsWith("http://") || normalized.toLowerCase().startsWith("https://");
+	const isSocks4 = normalized.toLowerCase().startsWith("socks4://");
 	let cleanStr = normalized.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
 	if (isHttp) {
 		return await connectHttp(cleanStr, destAddr, destPort, initialData);
 	}
+	if (isSocks4) {
+		return await connectSocks4(cleanStr, destAddr, destPort, initialData);
+	}
 	return await connectSocks5(cleanStr, destAddr, destPort, initialData);
+}
+async function connectSocks4(proxyStr, destAddr, destPort, initialData) {
+	const { user, pass, host, port, auth } = parseProxyConfig(proxyStr, 1080);
+	const socket = connect({ hostname: host, port: port });
+	const reader = socket.readable.getReader();
+	const writer = socket.writable.getWriter();
+	try {
+		const portHigh = (destPort >> 8) & 0xff;
+		const portLow = destPort & 0xff;
+		let req;
+		if (isIPv4(destAddr)) {
+			const ipBytes = destAddr.split(".").map(Number);
+			req = new Uint8Array([0x04, 0x01, portHigh, portLow, ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3], 0x00]);
+		} else {
+			const hostBytes = new TextEncoder().encode(destAddr);
+			req = new Uint8Array(9 + hostBytes.length + 1);
+			req[0] = 0x04;
+			req[1] = 0x01;
+			req[2] = portHigh;
+			req[3] = portLow;
+			req[4] = 0x00;
+			req[5] = 0x00;
+			req[6] = 0x00;
+			req[7] = 0x01;
+			req[8] = 0x00;
+			req.set(hostBytes, 9);
+			req[9 + hostBytes.length] = 0x00;
+		}
+		await writer.write(req);
+		let res = await reader.read();
+		if (res.done || !res.value || res.value[0] !== 0x00 || res.value[1] !== 0x5a) {
+			throw new Error("پـروکـسـی SOCKS4 وصل نشد یا اتصال را رد کرد");
+		}
+		if (initialData && initialData.byteLength > 0) {
+			await writer.write(convertToUint8Array(initialData));
+		}
+		writer.releaseLock();
+		reader.releaseLock();
+		return socket;
+	} catch (e) {
+		try {
+			writer.releaseLock();
+		} catch (err) {}
+		try {
+			reader.releaseLock();
+		} catch (err) {}
+		try {
+			socket.close();
+		} catch (err) {}
+		throw e;
+	}
 }
 function parseProxyConfig(proxyStr, defaultPort) {
 	let user = "",
