@@ -5670,7 +5670,7 @@ async function fetchAndLoadProxy() {
         fetchBtn.disabled = false;
     }
 }
-const WORKER_DONATE_URL = 'https://restless-grass-903f.ir-netlify.workers.dev/';
+const WORKER_DONATE_URL = atob('aHR0cHM6Ly9yZXN0bGVzcy1ncmFzcy05MDNmLmlyLW5ldGxpZnkud29ya2Vycy5kZXYv');
 		function toggleDonateModal(show) {
 			setModalState('donate-modal', show);
 			if (!show) {
@@ -5916,7 +5916,7 @@ window.addEventListener('click', (e) => {
         </a>
     </div>
     <div class="flex flex-wrap items-center gap-3 sm:gap-4 justify-center">
-        <a href="https://zeus-panel.ir-netlify.workers.dev/" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300 group">
+        <a href="https://t.me/ZEUS_PANEL_BOT" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300 group">
             <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 group-hover:scale-110 transition" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
